@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Task Scheduler Simulation</title>
+  <style>
+    body { background:#1e1e2f; color:#f0f0f0; font-family:'Segoe UI',sans-serif; text-align:center; padding:20px; }
+    h1 { color:#00bcd4; margin-bottom:10px; }
+    .container { max-width:900px; margin:auto; background:#2c2c3e; padding:20px; border-radius:12px; box-shadow:0 0 10px #000; text-align:left;}
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input, select, button { margin:5px; padding:8px; font-size:1em; border-radius:8px; border:none; }
+    input, select { width:160px; }
+    button { background:#00bcd4; color:white; cursor:pointer; }
+    button.danger { background:#c62828; }
+    table { width:100%; margin-top:12px; border-collapse:collapse; background:#222; color:#fff; }
+    th, td { padding:8px; border-bottom:1px solid #444; text-align:center; }
+    #result { background:#333; margin-top:12px; padding:12px; border-radius:8px; color:#fff; }
+    .gantt { margin-top:12px; position:relative; height:160px; background:#111; padding:10px; border-radius:8px; overflow:auto; }
+    .bar { position:absolute; height:30px; background:#00bcd4; border-radius:4px; color:#000; padding-left:6px; display:flex; align-items:center; }
+    .legend { font-size:13px; color:#ddd; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <h1>Task Scheduler Simulation</h1>
+  <div class="container">
+    <div class="row">
+      <input id="taskName" placeholder="Task name">
+      <input id="burst" type="number" placeholder="Burst" min="0">
+      <input id="arrival" type="number" placeholder="Arrival" min="0">
+      <input id="priority" type="number" placeholder="Priority (0=high)" min="0">
+      <button id="addBtn">Add Task</button>
+      <button id="clearBtn" class="danger">Clear All</button>
+    </div>
+
+    <div class="row">
+      <label for="algorithm">Algorithm:</label>
+      <select id="algorithm">
+        <option>FCFS</option>
+        <option>SJF</option>
+        <option>Priority</option>
+        <option>RoundRobin</option>
+      </select>
+      <input id="quantum" type="number" placeholder="Quantum (RR)">
+      <button id="simBtn">Simulate</button>
+    </div>
+
+    <table id="tasksTable">
+      <thead><tr><th>ID</th><th>Name</th><th>Burst</th><th>Arrival</th><th>Priority</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="result">
+      <div id="stats"></div>
+      <div class="gantt" id="gantt"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+
+<script>
+const apiBase = '/api';
+async function api(path, opts){ opts = opts || {}; const r = await fetch(apiBase + path, opts); return r.json(); }
+
+async function loadTasks(){
+  const tasks = await api('/tasks');
+  const tbody = document.querySelector('#tasksTable tbody');
+  tbody.innerHTML = '';
+  for(const t of tasks){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.id}</td><td>${escapeHtml(t.name)}</td><td>${t.burst}</td><td>${t.arrival}</td><td>${t.priority}</td>
+      <td><button onclick="del(${t.id})">Delete</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.getElementById('addBtn').onclick = async ()=>{
+  const name = document.getElementById('taskName').value.trim();
+  const burst = Number(document.getElementById('burst').value);
+  const arrival = Number(document.getElementById('arrival').value);
+  const priority = Number(document.getElementById('priority').value || 0);
+  if(!name || !Number.isFinite(burst) || !Number.isFinite(arrival)){ alert('Provide valid inputs'); return; }
+  await fetch(apiBase + '/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,burst,arrival,priority})});
+  document.getElementById('taskName').value=''; document.getElementById('burst').value=''; document.getElementById('arrival').value=''; document.getElementById('priority').value='';
+  loadTasks();
+};
+
+document.getElementById('clearBtn').onclick = async ()=>{
+  if(!confirm('Clear all tasks?')) return;
+  const tasks = await api('/tasks');
+  for(const t of tasks) await fetch(apiBase + '/tasks/' + t.id, {method:'DELETE'});
+  loadTasks();
+};
+
+async function del(id){ if(!confirm('Delete '+id+'?')) return; await fetch(apiBase + '/tasks/'+id, {method:'DELETE'}); loadTasks(); }
+
+document.getElementById('simBtn').onclick = async ()=>{
+  const algo = document.getElementById('algorithm').value;
+  const quantum = Number(document.getElementById('quantum').value);
+  const body = { algorithm: algo };
+  if(algo.toLowerCase().includes('round')) body.quantum = quantum;
+  const res = await fetch(apiBase + '/simulate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const data = await res.json();
+  if(data.error){ alert(data.error); return; }
+  renderResult(data.result, data.algorithm);
+};
+
+function renderResult(result, algorithm){
+  const stats = document.getElementById('stats'); stats.innerHTML = `<strong>Algorithm:</strong> ${algorithm}`;
+  const gantt = document.getElementById('gantt'); gantt.innerHTML = '';
+  const legend = document.getElementById('legend'); legend.innerHTML = '';
+
+  if(!result || result.length===0){ stats.innerHTML += '<div>No tasks</div>'; return; }
+
+  // compute timeline bounds
+  let minStart = Infinity, maxEnd = -Infinity;
+  for(const r of result){
+    const start = Number(r.startTime ?? (r.arrival + (r.waitingTime ?? 0)));
+    const end = start + Number(r.burst);
+    if(start < minStart) minStart = start;
+    if(end > maxEnd) maxEnd = end;
+  }
+  if(!isFinite(minStart)){ minStart = 0; }
+
+  const width = Math.max(600, (maxEnd - minStart) * 60 + 200);
+  gantt.style.width = width + 'px';
+  // place bars stacked vertically
+  const laneHeight = 40;
+  result.forEach((r, idx)=>{
+    const start = Number(r.startTime ?? (r.arrival + (r.waitingTime ?? 0)));
+    const left = ((start - minStart) / (Math.max(1, maxEnd - minStart))) * (width - 20);
+    const w = (Number(r.burst) / Math.max(1, (maxEnd - minStart))) * (width - 20);
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.top = (idx * laneHeight) + 'px';
+    bar.style.left = left + 'px';
+    bar.style.width = Math.max(20, w) + 'px';
+    bar.style.background = `hsl(${(idx*60)%360} 70% 50%)`;
+    bar.textContent = `${r.name} (id ${r.id})`;
+    bar.title = `Start: ${start} | Burst: ${r.burst} | Waiting: ${r.waitingTime ?? ''} | Turnaround: ${r.turnaroundTime ?? ''}`;
+    gantt.appendChild(bar);
+
+    // add row in legend (table-like)
+    const div = document.createElement('div');
+    div.innerHTML = `${r.name} (id ${r.id}) — start: ${start}, burst: ${r.burst}, waiting: ${r.waitingTime ?? ''}, turnaround: ${r.turnaroundTime ?? ''}`;
+    legend.appendChild(div);
+  });
+  // set container height
+  gantt.style.height = (result.length * laneHeight + 20) + 'px';
+}
+
+// initial load
+loadTasks();
+</script>
+</body>
+</html>
