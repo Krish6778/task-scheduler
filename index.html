@@ -3,74 +3,141 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Task Scheduler Simulation</title>
+  <title>Task Scheduler — Improved Gantt</title>
   <style>
-    body { background:#1e1e2f; color:#f0f0f0; font-family:'Segoe UI',sans-serif; text-align:center; padding:20px; }
-    h1 { color:#00bcd4; margin-bottom:10px; }
-    .container { max-width:900px; margin:auto; background:#2c2c3e; padding:20px; border-radius:12px; box-shadow:0 0 10px #000; text-align:left;}
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    input, select, button { margin:5px; padding:8px; font-size:1em; border-radius:8px; border:none; }
-    input, select { width:160px; }
-    button { background:#00bcd4; color:white; cursor:pointer; }
-    button.danger { background:#c62828; }
-    table { width:100%; margin-top:12px; border-collapse:collapse; background:#222; color:#fff; }
-    th, td { padding:8px; border-bottom:1px solid #444; text-align:center; }
-    #result { background:#333; margin-top:12px; padding:12px; border-radius:8px; color:#fff; }
-    .gantt { margin-top:12px; position:relative; height:160px; background:#111; padding:10px; border-radius:8px; overflow:auto; }
-    .bar { position:absolute; height:30px; background:#00bcd4; border-radius:4px; color:#000; padding-left:6px; display:flex; align-items:center; }
-    .legend { font-size:13px; color:#ddd; margin-top:6px; }
+    :root{
+      --bg:#14121a;
+      --card:#25232d;
+      --muted:#9aa0a6;
+      --accent:#00bcd4;
+      --panel:#2f2d37;
+      --gantt-bg:#0e0e10;
+      --tick:#2e2e36;
+      --grid: rgba(255,255,255,0.04);
+      --strong-grid: rgba(255,255,255,0.06);
+      --bar-radius:8px;
+      --shadow: 0 6px 18px rgba(2,6,23,0.6);
+      font-family: 'Segoe UI', Roboto, system-ui, -apple-system, 'Helvetica Neue', Arial;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#1b1924 0%, #181622 100%);color:#e8eef6}
+    .wrap{max-width:1100px;margin:28px auto;padding:18px}
+    h1{ text-align:center;color:var(--accent); margin:8px 0 18px; font-size:28px; letter-spacing:1px; }
+    .card{background:var(--card); border-radius:12px; padding:18px; box-shadow:var(--shadow); }
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input, select, button{padding:10px 12px;border-radius:8px;border:none;outline:none;font-size:14px}
+    input[type="number"]{width:110px}
+    .controls{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .btn{background:var(--accent);color:#072;cursor:pointer}
+    .btn.danger{background:#d9534f}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px;text-align:left;color:#ddd;border-bottom:1px solid rgba(255,255,255,0.03)}
+    th{color:#fff;background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));}
+    /* Gantt area */
+    .gantt-panel{margin-top:18px;background:var(--panel);padding:16px;border-radius:10px;color:#fff}
+    .gantt-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .timeline-wrap{background:var(--gantt-bg);border-radius:8px;padding:14px;overflow:auto;position:relative}
+    .timeline-inner{position:relative;height: 160px; min-width:600px;}
+    .time-scale{position:relative;height:28px;margin-bottom:8px}
+    .tick{position:absolute;top:0;height:100%;display:flex;flex-direction:column;align-items:center}
+    .tick .line{width:1px;height:14px;background:var(--tick);opacity:0.6}
+    .tick .label{font-size:12px;color:var(--muted);margin-top:4px}
+    .gridline{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
+    .gridline.strong{border-left:2px solid var(--strong-grid)}
+    .bar-row{position:absolute;left:0;right:0;height:36px;display:block}
+    .bar-item{
+      position:absolute;height:36px;border-radius:var(--bar-radius);padding:6px 12px;display:flex;align-items:center;
+      color:#0b0b0b;font-weight:600;box-shadow:0 6px 14px rgba(0,0,0,0.4);transition:transform 400ms cubic-bezier(.2,.8,.2,1), width 400ms,cubic-bezier(.2,.8,.2,1), left 400ms;
+    }
+    .bar-label{font-size:13px}
+    .legend{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    .legend .item{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+    .legend .swatch{width:18px;height:18px;border-radius:6px}
+    .stats{margin-top:12px;color:var(--muted);font-size:14px}
+    /* Tooltip */
+    .tooltip{
+      position:fixed;padding:10px 12px;border-radius:8px;background:#0b0b0b;color:#fff;font-size:13px;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,0.6);opacity:0;transform:translateY(-6px);transition:opacity 150ms, transform 150ms;
+    }
+    .tooltip.visible{opacity:1;transform:translateY(0)}
+    /* responsive */
+    @media (max-width:800px){
+      .timeline-inner{height:220px}
+      .bar-row{height:46px}
+      .bar-item{height:40px}
+    }
   </style>
 </head>
 <body>
-  <h1>Task Scheduler Simulation</h1>
-  <div class="container">
-    <div class="row">
-      <input id="taskName" placeholder="Task name">
-      <input id="burst" type="number" placeholder="Burst" min="0">
-      <input id="arrival" type="number" placeholder="Arrival" min="0">
-      <input id="priority" type="number" placeholder="Priority (0=high)" min="0">
-      <button id="addBtn">Add Task</button>
-      <button id="clearBtn" class="danger">Clear All</button>
-    </div>
+  <div class="wrap">
+    <h1>Task Scheduler Simulation — Gantt (Modern)</h1>
 
-    <div class="row">
-      <label for="algorithm">Algorithm:</label>
-      <select id="algorithm">
-        <option>FCFS</option>
-        <option>SJF</option>
-        <option>Priority</option>
-        <option>RoundRobin</option>
-      </select>
-      <input id="quantum" type="number" placeholder="Quantum (RR)">
-      <button id="simBtn">Simulate</button>
-    </div>
+    <div class="card">
+      <div class="controls">
+        <input id="taskName" placeholder="Task name">
+        <input id="burst" type="number" placeholder="Burst" min="0">
+        <input id="arrival" type="number" placeholder="Arrival" min="0">
+        <input id="priority" type="number" placeholder="Priority (0=high)" min="0">
+        <button id="addBtn" class="btn">Add Task</button>
+        <button id="clearBtn" class="btn danger">Clear All</button>
+      </div>
 
-    <table id="tasksTable">
-      <thead><tr><th>ID</th><th>Name</th><th>Burst</th><th>Arrival</th><th>Priority</th><th>Action</th></tr></thead>
-      <tbody></tbody>
-    </table>
+      <div class="controls" style="margin-top:8px;">
+        <label style="color:var(--muted);margin-right:8px">Algorithm:</label>
+        <select id="algorithm">
+          <option>FCFS</option>
+          <option>SJF</option>
+          <option>Priority</option>
+          <option>RoundRobin</option>
+        </select>
+        <input id="quantum" type="number" placeholder="Quantum (RR)">
+        <button id="simBtn" class="btn">Simulate</button>
+      </div>
 
-    <div id="result">
-      <div id="stats"></div>
-      <div class="gantt" id="gantt"></div>
-      <div class="legend" id="legend"></div>
+      <table id="tasksTable" aria-label="tasks">
+        <thead><tr><th>ID</th><th>Name</th><th>Burst</th><th>Arrival</th><th>Priority</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="gantt-panel">
+        <div class="gantt-header">
+          <div><strong>Algorithm:</strong> <span id="algoLabel">—</span></div>
+          <div class="legend" id="legend"></div>
+        </div>
+
+        <div class="timeline-wrap">
+          <div class="time-scale" id="timeScale"></div>
+          <div class="timeline-inner" id="timelineInner"></div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+      </div>
     </div>
   </div>
 
+  <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+
 <script>
 const apiBase = '/api';
+const PIXEL_PER_UNIT = 60; // 1 time unit = 60px (adjust to taste)
+const MIN_WIDTH = 600;
+
+function colorForId(id){
+  // pick pleasant soft colors by HSL
+  const hue = (id * 67) % 360;
+  return `hsl(${hue} 75% 60%)`;
+}
+
 async function api(path, opts){ opts = opts || {}; const r = await fetch(apiBase + path, opts); return r.json(); }
 
 async function loadTasks(){
   const tasks = await api('/tasks');
   const tbody = document.querySelector('#tasksTable tbody');
   tbody.innerHTML = '';
-  for(const t of tasks){
+  tasks.forEach(t => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${t.id}</td><td>${escapeHtml(t.name)}</td><td>${t.burst}</td><td>${t.arrival}</td><td>${t.priority}</td>
       <td><button onclick="del(${t.id})">Delete</button></td>`;
     tbody.appendChild(tr);
-  }
+  });
 }
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -82,18 +149,18 @@ document.getElementById('addBtn').onclick = async ()=>{
   const priority = Number(document.getElementById('priority').value || 0);
   if(!name || !Number.isFinite(burst) || !Number.isFinite(arrival)){ alert('Provide valid inputs'); return; }
   await fetch(apiBase + '/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,burst,arrival,priority})});
-  document.getElementById('taskName').value=''; document.getElementById('burst').value=''; document.getElementById('arrival').value=''; document.getElementById('priority').value='';
-  loadTasks();
+  ['taskName','burst','arrival','priority'].forEach(id=>document.getElementById(id).value='');
+  await loadTasks();
 };
 
 document.getElementById('clearBtn').onclick = async ()=>{
   if(!confirm('Clear all tasks?')) return;
   const tasks = await api('/tasks');
   for(const t of tasks) await fetch(apiBase + '/tasks/' + t.id, {method:'DELETE'});
-  loadTasks();
+  await loadTasks();
 };
 
-async function del(id){ if(!confirm('Delete '+id+'?')) return; await fetch(apiBase + '/tasks/'+id, {method:'DELETE'}); loadTasks(); }
+async function del(id){ if(!confirm('Delete '+id+'?')) return; await fetch(apiBase + '/tasks/'+id, {method:'DELETE'}); await loadTasks(); }
 
 document.getElementById('simBtn').onclick = async ()=>{
   const algo = document.getElementById('algorithm').value;
@@ -106,48 +173,145 @@ document.getElementById('simBtn').onclick = async ()=>{
   renderResult(data.result, data.algorithm);
 };
 
+function clearTimeline(){
+  document.getElementById('timeScale').innerHTML = '';
+  document.getElementById('timelineInner').innerHTML = '';
+  document.getElementById('legend').innerHTML = '';
+  document.getElementById('stats').textContent = '';
+}
+
 function renderResult(result, algorithm){
-  const stats = document.getElementById('stats'); stats.innerHTML = `<strong>Algorithm:</strong> ${algorithm}`;
-  const gantt = document.getElementById('gantt'); gantt.innerHTML = '';
-  const legend = document.getElementById('legend'); legend.innerHTML = '';
+  clearTimeline();
+  document.getElementById('algoLabel').textContent = algorithm;
 
-  if(!result || result.length===0){ stats.innerHTML += '<div>No tasks</div>'; return; }
+  if(!result || result.length === 0){
+    document.getElementById('stats').textContent = 'No tasks to simulate.';
+    return;
+  }
 
-  // compute timeline bounds
+  // compute start/end bounds
   let minStart = Infinity, maxEnd = -Infinity;
-  for(const r of result){
+  result.forEach(r => {
     const start = Number(r.startTime ?? (r.arrival + (r.waitingTime ?? 0)));
     const end = start + Number(r.burst);
     if(start < minStart) minStart = start;
     if(end > maxEnd) maxEnd = end;
-  }
-  if(!isFinite(minStart)){ minStart = 0; }
-
-  const width = Math.max(600, (maxEnd - minStart) * 60 + 200);
-  gantt.style.width = width + 'px';
-  // place bars stacked vertically
-  const laneHeight = 40;
-  result.forEach((r, idx)=>{
-    const start = Number(r.startTime ?? (r.arrival + (r.waitingTime ?? 0)));
-    const left = ((start - minStart) / (Math.max(1, maxEnd - minStart))) * (width - 20);
-    const w = (Number(r.burst) / Math.max(1, (maxEnd - minStart))) * (width - 20);
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    bar.style.top = (idx * laneHeight) + 'px';
-    bar.style.left = left + 'px';
-    bar.style.width = Math.max(20, w) + 'px';
-    bar.style.background = `hsl(${(idx*60)%360} 70% 50%)`;
-    bar.textContent = `${r.name} (id ${r.id})`;
-    bar.title = `Start: ${start} | Burst: ${r.burst} | Waiting: ${r.waitingTime ?? ''} | Turnaround: ${r.turnaroundTime ?? ''}`;
-    gantt.appendChild(bar);
-
-    // add row in legend (table-like)
-    const div = document.createElement('div');
-    div.innerHTML = `${r.name} (id ${r.id}) — start: ${start}, burst: ${r.burst}, waiting: ${r.waitingTime ?? ''}, turnaround: ${r.turnaroundTime ?? ''}`;
-    legend.appendChild(div);
   });
-  // set container height
-  gantt.style.height = (result.length * laneHeight + 20) + 'px';
+  if(!isFinite(minStart)) minStart = 0;
+  if(maxEnd <= minStart) maxEnd = minStart + 1;
+
+  const duration = maxEnd - minStart;
+  const totalWidth = Math.max(MIN_WIDTH, Math.ceil(duration * PIXEL_PER_UNIT) + 120);
+
+  const timeScale = document.getElementById('timeScale');
+  const timeline = document.getElementById('timelineInner');
+  timeScale.style.minWidth = totalWidth + 'px';
+  timeline.style.minWidth = totalWidth + 'px';
+
+  // draw gridlines + ticks
+  const majorInterval = 5;
+  for(let t = Math.floor(minStart); t <= Math.ceil(maxEnd); t++){
+    const left = Math.round((t - minStart) * PIXEL_PER_UNIT);
+    // tick
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.left = left + 'px';
+    tick.style.width = '1px';
+    tick.innerHTML = `<div class="line"></div><div class="label">${t}</div>`;
+    timeScale.appendChild(tick);
+
+    // gridline
+    const g = document.createElement('div');
+    g.className = 'gridline' + (t % majorInterval === 0 ? ' strong' : '');
+    g.style.left = left + 'px';
+    timeline.appendChild(g);
+  }
+
+  // prepare lanes (one row per task)
+  const laneHeight = 46;
+  timeline.style.height = (result.length * laneHeight + 40) + 'px';
+
+  // legend & bars
+  result.forEach((r, idx) => {
+    const start = Number(r.startTime ?? (r.arrival + (r.waitingTime ?? 0)));
+    const left = (start - minStart) * PIXEL_PER_UNIT;
+    const w = Math.max(8, r.burst * PIXEL_PER_UNIT);
+
+    const y = idx * laneHeight + 8;
+
+    // bar element
+    const bar = document.createElement('div');
+    bar.className = 'bar-item';
+    bar.style.left = left + 'px';
+    bar.style.top = y + 'px';
+    bar.style.width = '0px'; // animate from 0 to w
+    const bg = colorForId(r.id || idx+1);
+    bar.style.background = bg;
+    bar.style.border = '1px solid rgba(0,0,0,0.15)';
+    bar.innerHTML = `<span class="bar-label">${escapeHtml(r.name)} (id ${r.id})</span>`;
+    bar.dataset.start = start;
+    bar.dataset.burst = r.burst;
+    bar.dataset.waiting = r.waitingTime ?? '';
+    bar.dataset.turnaround = r.turnaroundTime ?? '';
+
+    timeline.appendChild(bar);
+
+    // animate width and left (slight delay for smoothness)
+    requestAnimationFrame(()=> {
+      bar.style.width = w + 'px';
+    });
+
+    // attach tooltip interactions
+    attachTooltip(bar);
+
+    // add legend chip
+    const legend = document.getElementById('legend');
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = `<div class="swatch" style="background:${bg}"></div><div>${escapeHtml(r.name)} (id ${r.id}) — start:${start}, burst:${r.burst}</div>`;
+    legend.appendChild(item);
+  });
+
+  // compute average waiting & turnaround
+  let totalW = 0, totalT = 0;
+  result.forEach(r => { totalW += Number(r.waitingTime ?? 0); totalT += Number(r.turnaroundTime ?? 0); });
+  const avgW = (totalW / result.length).toFixed(2);
+  const avgT = (totalT / result.length).toFixed(2);
+
+  document.getElementById('stats').innerHTML = `<strong>Average waiting time:</strong> ${avgW} — <strong>Average turnaround time:</strong> ${avgT}`;
+}
+
+// TOOLTIP
+const tooltip = document.getElementById('tooltip');
+
+function attachTooltip(el){
+  el.addEventListener('mouseenter', (e)=>{
+    const start = el.dataset.start;
+    const burst = el.dataset.burst;
+    const waiting = el.dataset.waiting;
+    const turnaround = el.dataset.turnaround;
+    tooltip.innerHTML = `<div><strong>${el.querySelector('.bar-label').textContent}</strong></div>
+      <div style="margin-top:6px;font-size:13px;color:#cdd6df">Start: ${start} &nbsp; Burst: ${burst}</div>
+      <div style="font-size:13px;color:#cdd6df">Waiting: ${waiting} &nbsp; Turnaround: ${turnaround}</div>`;
+    tooltip.classList.add('visible');
+    positionTooltip(e);
+  });
+  el.addEventListener('mousemove', positionTooltip);
+  el.addEventListener('mouseleave', ()=>{
+    tooltip.classList.remove('visible');
+  });
+}
+
+function positionTooltip(e){
+  const pad = 12;
+  const tw = tooltip.offsetWidth;
+  const th = tooltip.offsetHeight;
+  let x = e.clientX + 14;
+  let y = e.clientY + 14;
+  if(x + tw + pad > window.innerWidth) x = e.clientX - tw - 18;
+  if(y + th + pad > window.innerHeight) y = e.clientY - th - 18;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
 }
 
 // initial load
